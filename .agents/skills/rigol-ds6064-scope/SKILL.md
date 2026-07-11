@@ -94,7 +94,7 @@ For PWM inspection, prefer `python src/scope_cli.py analyze-pwm --channel <chann
 
 If the instrument session is unstable after a capture, use `python src/scope_cli.py analyze-pwm-file --csv <path>` to analyze a saved CSV offline. CSV files saved after this update include a `time_s` column when the scope reports a valid sample interval, so offline PWM analysis can recover frequency and duty cycle without reopening USB-TMC.
 
-The DS6064 `:MEASure:ITEM?` query path is the preferred source for direct frequency, period, duty, and Vpp questions because it uses the instrument's own measurement engine. If that query times out on USB-TMC, report the timeout, then fall back to `capture` or `analyze-pwm` and label the result as waveform-derived.
+The DS6064 measurement query path is the preferred source for direct frequency, period, duty, and Vpp questions because it uses the instrument's own measurement engine. The DS6000 programming guide documents direct queries such as `:MEASure:FREQuency? CHANnel1`, `:MEASure:PERiod? CHANnel1`, `:MEASure:PDUTy? CHANnel1`, and `:MEASure:VPP? CHANnel1`; use the CLI wrappers instead of sending them directly. If that query times out on USB-TMC, report the timeout, then fall back to `capture` or `analyze-pwm` and label the result as waveform-derived.
 
 ## USB-TMC Stability
 

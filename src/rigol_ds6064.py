@@ -60,7 +60,7 @@ class RigolDS6064:
     def connect(self) -> "RigolDS6064":
         import pyvisa
 
-        self.rm = pyvisa.ResourceManager(self.config.visa_library)
+        self.rm = create_resource_manager(pyvisa, self.config.visa_library)
         resources = self.rm.list_resources()
         if resources and self.config.resource not in resources:
             print("Warning: configured resource not found in list_resources().", file=sys.stderr)
@@ -127,19 +127,19 @@ class RigolDS6064:
 
     def measure_vpp(self, channel: str = "CHANnel1") -> float:
         channel = validate_channel(channel)
-        return float(self.query(f":MEASure:ITEM? VPP,{channel}"))
+        return float(self.query(f":MEASure:VPP? {channel}"))
 
     def measure_freq(self, channel: str = "CHANnel1") -> float:
         channel = validate_channel(channel)
-        return float(self.query(f":MEASure:ITEM? FREQuency,{channel}"))
+        return float(self.query(f":MEASure:FREQuency? {channel}"))
 
     def measure_period(self, channel: str = "CHANnel1") -> float:
         channel = validate_channel(channel)
-        return float(self.query(f":MEASure:ITEM? PERiod,{channel}"))
+        return float(self.query(f":MEASure:PERiod? {channel}"))
 
     def measure_duty(self, channel: str = "CHANnel1") -> float:
         channel = validate_channel(channel)
-        return float(self.query(f":MEASure:ITEM? PDUTy,{channel}"))
+        return normalize_duty_percent(float(self.query(f":MEASure:PDUTy? {channel}")))
 
     def set_timebase_scale(self, seconds_per_div: float) -> None:
         if seconds_per_div <= 0:
@@ -178,7 +178,7 @@ class RigolDS6064:
 
         self.write(f":WAVeform:SOURce {channel}")
         self.write(":WAVeform:MODE NORMal")
-        self.write(":WAVeform:FORMat ASCii")
+        self.write(":WAVeform:FORMat BYTE")
         self.write(f":WAVeform:POINts {points}")
         preamble = self.query(":WAVeform:PREamble?")
 
@@ -212,7 +212,7 @@ class RigolDS6064:
 
         self.write(f":WAVeform:SOURce {channel}")
         self.write(":WAVeform:MODE NORMal")
-        self.write(":WAVeform:FORMat ASCii")
+        self.write(":WAVeform:FORMat BYTE")
         self.write(f":WAVeform:POINts {points}")
 
         source = self.safe_query(":WAVeform:SOURce?")
@@ -280,6 +280,12 @@ def normalize_optional_env(value: str | None) -> str | None:
     return normalized
 
 
+def normalize_duty_percent(value: float) -> float:
+    if -1.0 <= value <= 1.0:
+        return value * 100.0
+    return value
+
+
 def resolve_visa_access_mode(mode: str):
     normalized = (mode or "no_lock").lower().strip().replace("-", "_")
     if normalized in {"", "default"}:
@@ -291,6 +297,12 @@ def resolve_visa_access_mode(mode: str):
     except KeyError as exc:
         valid = ", ".join(pyvisa.constants.AccessModes.__members__)
         raise ValueError(f"Invalid VISA access mode: {mode}. Use one of: default, {valid}") from exc
+
+
+def create_resource_manager(pyvisa_module, visa_library: str | None = None):
+    if visa_library is None:
+        return pyvisa_module.ResourceManager()
+    return pyvisa_module.ResourceManager(visa_library)
 
 
 def parse_ascii_waveform(raw: str) -> list[float]:

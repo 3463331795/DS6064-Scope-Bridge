@@ -7,3 +7,6 @@ outputs/images/*.png
 outputs/logs/*
 !outputs/logs/.gitkeep
 outputs/manifests/*.json
+outputs/chm_extract/
+*.pdf
+*.chm

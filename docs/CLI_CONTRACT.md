@@ -63,7 +63,7 @@ For direct scalar questions, use the oscilloscope's built-in measurement engine 
 .\.venv\Scripts\python.exe src\scope_cli.py vpp --channel CHANnel1
 ```
 
-The `freq`, `period`, `duty`, and `vpp` commands call the wrapped `:MEASure:ITEM?` path and return the DS6064's own measurement result. Treat those values as authoritative for frequency, period, duty, and peak-to-peak voltage.
+The `freq`, `period`, `duty`, and `vpp` commands call the DS6000 measurement queries documented in the programming guide, for example `:MEASure:FREQuency? CHANnel1`, and return the DS6064's own measurement result. Treat those values as authoritative for frequency, period, duty, and peak-to-peak voltage. The scope may return positive duty cycle as a ratio such as `5.080000e-01`; the CLI normalizes `duty` to percent.
 
 Use `capture`, `summary`, or `analyze-pwm` when the user needs waveform evidence, timing relationships, CSV/PNG artifacts, or visual quality analysis. If a built-in measurement and a CSV-derived estimate disagree, report the built-in measurement as primary and label the waveform result as an estimate.
 

@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from rigol_ds6064 import normalize_optional_env, parse_ascii_waveform, parse_waveform_payload, resolve_visa_access_mode, scale_waveform_values, validate_channel
+from rigol_ds6064 import create_resource_manager, normalize_duty_percent, normalize_optional_env, parse_ascii_waveform, parse_waveform_payload, resolve_visa_access_mode, scale_waveform_values, validate_channel
 from safety import assert_safe_scpi
 from scope_cli import InstrumentLock, command_uses_instrument, parse_lock_timeout_ms
 from waveform_analysis import analyze_pwm, basic_waveform_stats, load_waveform_csv, save_json_manifest, save_multi_waveform_csv, save_waveform_csv
@@ -79,6 +79,23 @@ class OfflineParserTests(unittest.TestCase):
         self.assertIsNone(normalize_optional_env(" default "))
         self.assertIsNone(normalize_optional_env("AUTO"))
         self.assertEqual(normalize_optional_env("C:/Windows/System32/visa64.dll"), "C:/Windows/System32/visa64.dll")
+
+    def test_normalize_duty_percent_accepts_ratio_or_percent(self):
+        self.assertAlmostEqual(normalize_duty_percent(0.508), 50.8)
+        self.assertAlmostEqual(normalize_duty_percent(50.8), 50.8)
+
+    def test_create_resource_manager_omits_none_library(self):
+        class FakePyvisa:
+            calls = []
+
+            @staticmethod
+            def ResourceManager(*args):
+                FakePyvisa.calls.append(args)
+                return object()
+
+        create_resource_manager(FakePyvisa, None)
+        create_resource_manager(FakePyvisa, "C:/Windows/System32/visa64.dll")
+        self.assertEqual(FakePyvisa.calls, [(), ("C:/Windows/System32/visa64.dll",)])
 
     def test_parse_lock_timeout_ms_defaults_and_handles_invalid_values(self):
         old_value = os.environ.pop("RIGOL_LOCK_TIMEOUT_MS", None)

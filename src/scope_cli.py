@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from rigol_ds6064 import RigolDS6064, ScopeConfig, validate_channel
+from rigol_ds6064 import RigolDS6064, ScopeConfig, create_resource_manager, validate_channel
 from waveform_analysis import (
     analyze_pwm,
     basic_waveform_stats,
@@ -284,7 +284,8 @@ def build_parser() -> argparse.ArgumentParser:
 def list_resources() -> None:
     import pyvisa
 
-    rm = pyvisa.ResourceManager()
+    config = ScopeConfig.from_env()
+    rm = create_resource_manager(pyvisa, config.visa_library)
     try:
         ok({"resources": list(rm.list_resources())})
     finally:
@@ -294,7 +295,8 @@ def list_resources() -> None:
 def list_visa_resources_data() -> dict:
     import pyvisa
 
-    rm = pyvisa.ResourceManager()
+    config = ScopeConfig.from_env()
+    rm = create_resource_manager(pyvisa, config.visa_library)
     try:
         resources = list(rm.list_resources())
         return {"ok": True, "resources": resources}
@@ -361,7 +363,7 @@ def probe_open_resource_data(
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     try:
-        rm = pyvisa.ResourceManager(config.visa_library)
+        rm = create_resource_manager(pyvisa, config.visa_library)
         stage("resource_manager", True, visa_library=str(rm.visalib))
 
         resources = list(rm.list_resources())

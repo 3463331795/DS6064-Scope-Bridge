@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC))
 
-from rigol_ds6064 import parse_ascii_waveform, parse_waveform_payload, scale_waveform_values, validate_channel
+from rigol_ds6064 import parse_ascii_waveform, parse_waveform_payload, resolve_visa_access_mode, scale_waveform_values, validate_channel
 from safety import assert_safe_scpi
 from scope_cli import InstrumentLock, command_uses_instrument, parse_lock_timeout_ms
 from waveform_analysis import analyze_pwm, basic_waveform_stats, load_waveform_csv, save_json_manifest, save_multi_waveform_csv, save_waveform_csv
@@ -59,9 +59,19 @@ class OfflineParserTests(unittest.TestCase):
     def test_command_uses_instrument_only_for_hardware_commands(self):
         self.assertTrue(command_uses_instrument(["freq", "--channel", "CHANnel1"]))
         self.assertTrue(command_uses_instrument(["capture-multi", "--channels", "CHANnel1", "CHANnel2"]))
+        self.assertTrue(command_uses_instrument(["probe-open", "--query-idn"]))
         self.assertFalse(command_uses_instrument(["latest"]))
         self.assertFalse(command_uses_instrument(["analyze-pwm-file", "--csv", "wave.csv"]))
         self.assertFalse(command_uses_instrument(["--help"]))
+
+    def test_resolve_visa_access_mode(self):
+        import pyvisa
+
+        self.assertIsNone(resolve_visa_access_mode("default"))
+        self.assertEqual(resolve_visa_access_mode("no-lock"), pyvisa.constants.AccessModes.no_lock)
+        self.assertEqual(resolve_visa_access_mode("shared_lock"), pyvisa.constants.AccessModes.shared_lock)
+        with self.assertRaises(ValueError):
+            resolve_visa_access_mode("bad")
 
     def test_parse_lock_timeout_ms_defaults_and_handles_invalid_values(self):
         old_value = os.environ.pop("RIGOL_LOCK_TIMEOUT_MS", None)

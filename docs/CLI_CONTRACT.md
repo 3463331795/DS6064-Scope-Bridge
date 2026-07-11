@@ -16,7 +16,7 @@ Default connection:
 USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 ```
 
-The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`.
+The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`. VISA resource opening defaults to `RIGOL_VISA_ACCESS_MODE=no_lock`.
 
 Hardware-touching commands take an exclusive lock at `outputs/logs/rigol_ds6064.lock` before starting the worker subprocess. If the lock cannot be acquired, the CLI returns a JSON error instead of allowing concurrent USB-TMC access.
 
@@ -50,6 +50,7 @@ Agents should parse `ok` first. Do not rely on stderr for machine decisions.
 2. If `status` is `pass` or acceptable `degraded`, run `capture` or `capture-multi`.
 3. Use returned `manifest_path` first, then CSV/PNG paths for downstream analysis.
 4. If a channel returns zero points, run `diagnose-channel` for that channel.
+5. If `list` sees the instrument but `idn` times out, run `probe-open --query-idn` to locate the stuck VISA stage.
 
 ## Measurement Policy
 
@@ -148,6 +149,38 @@ Returns:
 
 ```json
 {"identity": "RIGOL TECHNOLOGIES,DS6064,DS6C134300118,..."}
+```
+
+### probe-open
+
+```powershell
+.\.venv\Scripts\python.exe src\scope_cli.py probe-open --query-idn
+```
+
+Diagnoses the USB-TMC open path through timed stages while still using the lock and watchdog. It is read-only unless `--query-idn` is supplied, in which case it sends `*IDN?` after the VISA session opens.
+
+Useful options:
+
+```powershell
+.\.venv\Scripts\python.exe src\scope_cli.py probe-open --access-mode no_lock --open-timeout-ms 5000 --query-idn
+.\.venv\Scripts\python.exe src\scope_cli.py probe-open --access-mode default --open-timeout-ms 5000
+```
+
+Stable fields:
+
+```json
+{
+  "status": "pass|fail",
+  "connection": "USB-TMC",
+  "identity": "RIGOL TECHNOLOGIES,DS6064,...",
+  "config": {
+    "resource": "USB0::0x1AB1::0x04B0::DS6C134300118::INSTR",
+    "timeout_ms": 20000,
+    "access_mode": "no_lock",
+    "clear_on_connect": false
+  },
+  "stages": []
+}
 ```
 
 ### capture
@@ -249,6 +282,7 @@ USB-TMC sessions can appear to hang when a previous command leaves unread data, 
 - Any SCPI command containing `?` must consume its reply before the next command.
 - Start waveform captures at `--points 1200`; use `12000` only when the link is stable and more detail is needed.
 - Keep `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` for normal USB-TMC work.
+- Keep `RIGOL_VISA_ACCESS_MODE=no_lock` unless `probe-open` shows a backend-specific reason to test `default`, `shared_lock`, or `exclusive_lock`.
 - Do not run concurrent AI/tool calls against the DS6064. Hardware-touching CLI commands are guarded by `outputs/logs/rigol_ds6064.lock`; wait for the active command or retry after it finishes.
 - Frequent open/close can be unstable on USB-TMC; if this becomes a blocker, preserve this CLI contract and add a persistent queued `scope_server.py` later.
 - If the USB resource disappears after idle time, disable Windows USB selective suspend.

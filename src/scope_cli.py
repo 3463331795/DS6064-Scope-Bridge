@@ -27,6 +27,7 @@ MEASUREMENT_COMMANDS = {"vpp", "freq", "period", "duty", "summary", "capture", "
 INSTRUMENT_COMMANDS = {
     "list",
     "health",
+    "probe-open",
     "idn",
     "run",
     "stop",
@@ -48,8 +49,11 @@ def ok(data: dict) -> None:
     print(json.dumps({"ok": True, "data": data}, ensure_ascii=False, indent=2))
 
 
-def fail(message: str, code: int = 1) -> None:
-    print(json.dumps({"ok": False, "error": message}, ensure_ascii=False, indent=2))
+def fail(message: str, code: int = 1, data: dict | None = None) -> None:
+    payload = {"ok": False, "error": message}
+    if data is not None:
+        payload["data"] = data
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     sys.exit(code)
 
 
@@ -160,18 +164,30 @@ def run_worker_with_watchdog(argv: list[str]) -> None:
 
     command = [sys.executable, __file__, "--worker", *argv]
     timeout_s = parse_cli_timeout_ms() / 1000.0
+    env = os.environ.copy()
+    trace_path = None
+    if argv and argv[0] == "probe-open":
+        trace_path = Path("outputs/logs/probe_open_last.jsonl")
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text("", encoding="utf-8")
+        env["RIGOL_PROBE_TRACE_PATH"] = str(trace_path)
     proc = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=Path.cwd(),
+        env=env,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         kill_process_tree(proc.pid)
-        fail(f"Instrument command timed out after {timeout_s:.1f}s", code=124)
+        fail(
+            f"Instrument command timed out after {timeout_s:.1f}s",
+            code=124,
+            data=read_probe_trace(trace_path) if trace_path is not None else None,
+        )
 
     if stdout.strip():
         print(stdout, end="")
@@ -200,6 +216,17 @@ def kill_process_tree(pid: int) -> None:
         pass
 
 
+def read_probe_trace(path: Path) -> dict:
+    stages = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                stages.append(json.loads(line))
+            except json.JSONDecodeError:
+                stages.append({"stage": "trace_parse_error", "raw": line})
+    return {"probe_trace_path": str(path), "stages": stages}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Safe CLI for RIGOL DS6064 oscilloscope over USB-TMC",
@@ -211,6 +238,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_health = sub.add_parser("health", help="Run a read-only link health check")
     p_health.add_argument("--channels", nargs="+", default=["CHANnel1", "CHANnel2", "CHANnel3"])
     p_health.add_argument("--points", type=int, default=64)
+    p_probe_open = sub.add_parser("probe-open", help="Diagnose VISA resource opening in timed read-only stages")
+    p_probe_open.add_argument("--access-mode", default=None, help="VISA access mode: no_lock, shared_lock, exclusive_lock, or default")
+    p_probe_open.add_argument("--open-timeout-ms", type=int, default=None, help="Override VISA open timeout for this probe")
+    p_probe_open.add_argument("--query-idn", action="store_true", help="Query *IDN? after opening the resource")
     sub.add_parser("idn", help="Query *IDN?")
     sub.add_parser("run", help="Start acquisition")
     sub.add_parser("stop", help="Stop acquisition")
@@ -270,6 +301,125 @@ def list_visa_resources_data() -> dict:
         return {"ok": False, "error": str(exc), "resources": []}
     finally:
         rm.close()
+
+
+def probe_open_resource_data(
+    *,
+    access_mode: str | None = None,
+    open_timeout_ms: int | None = None,
+    query_idn: bool = False,
+) -> dict:
+    import pyvisa
+    from rigol_ds6064 import resolve_visa_access_mode
+
+    config = ScopeConfig.from_env()
+    if access_mode is not None:
+        config = ScopeConfig(
+            resource=config.resource,
+            timeout_ms=config.timeout_ms,
+            clear_on_connect=config.clear_on_connect,
+            visa_access_mode=access_mode,
+        )
+    if open_timeout_ms is not None:
+        if open_timeout_ms <= 0:
+            raise ValueError("open timeout must be positive")
+        config = ScopeConfig(
+            resource=config.resource,
+            timeout_ms=open_timeout_ms,
+            clear_on_connect=config.clear_on_connect,
+            visa_access_mode=config.visa_access_mode,
+        )
+
+    stages: list[dict] = []
+    started = time.monotonic()
+    rm = None
+    inst = None
+
+    def stage(name: str, ok_value: bool, **extra) -> None:
+        item = {
+            "stage": name,
+            "ok": ok_value,
+            "elapsed_ms": round((time.monotonic() - started) * 1000, 3),
+            **extra,
+        }
+        stages.append(item)
+        trace_path = os.getenv("RIGOL_PROBE_TRACE_PATH")
+        if trace_path:
+            with Path(trace_path).open("a", encoding="utf-8") as f:
+                f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    try:
+        rm = pyvisa.ResourceManager()
+        stage("resource_manager", True)
+
+        resources = list(rm.list_resources())
+        stage(
+            "list_resources",
+            True,
+            resources=resources,
+            configured_resource=config.resource,
+            resource_match=config.resource in resources,
+        )
+
+        open_kwargs = {"open_timeout": config.timeout_ms}
+        resolved_access_mode = resolve_visa_access_mode(config.visa_access_mode)
+        if resolved_access_mode is not None:
+            open_kwargs["access_mode"] = resolved_access_mode
+        stage(
+            "open_resource_start",
+            True,
+            resource=config.resource,
+            open_timeout_ms=config.timeout_ms,
+            access_mode=config.visa_access_mode,
+        )
+        inst = rm.open_resource(config.resource, **open_kwargs)
+        stage("open_resource", True, resource_class=inst.__class__.__name__)
+
+        inst.timeout = config.timeout_ms
+        inst.write_termination = "\n"
+        inst.read_termination = "\n"
+        inst.send_end = True
+        stage("configure_session", True, timeout_ms=config.timeout_ms)
+
+        identity = None
+        if query_idn:
+            stage("query_idn_start", True)
+            identity = inst.query("*IDN?").strip()
+            stage("query_idn", True, identity=identity)
+
+        return {
+            "status": "pass",
+            "connection": "USB-TMC",
+            "identity": identity,
+            "config": {
+                "resource": config.resource,
+                "timeout_ms": config.timeout_ms,
+                "access_mode": config.visa_access_mode,
+                "clear_on_connect": config.clear_on_connect,
+            },
+            "stages": stages,
+        }
+    except Exception as exc:
+        stage("error", False, error=str(exc), error_type=exc.__class__.__name__)
+        return {
+            "status": "fail",
+            "connection": "USB-TMC",
+            "config": {
+                "resource": config.resource,
+                "timeout_ms": config.timeout_ms,
+                "access_mode": config.visa_access_mode,
+                "clear_on_connect": config.clear_on_connect,
+            },
+            "stages": stages,
+        }
+    finally:
+        if inst is not None:
+            try:
+                inst.close()
+            except Exception:
+                pass
+        if rm is not None:
+            rm.close()
 
 
 def check_output_dirs() -> dict:
@@ -435,6 +585,16 @@ def main(argv: list[str] | None = None) -> None:
                     "checks": checks,
                     "recommendations": health_recommendations(status, checks),
                 }
+            )
+            return
+
+        if args.cmd == "probe-open":
+            ok(
+                probe_open_resource_data(
+                    access_mode=args.access_mode,
+                    open_timeout_ms=args.open_timeout_ms,
+                    query_idn=args.query_idn,
+                )
             )
             return
 

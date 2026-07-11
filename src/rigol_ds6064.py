@@ -27,6 +27,7 @@ class ScopeConfig:
     resource: str
     timeout_ms: int = 20000
     clear_on_connect: bool = False
+    visa_access_mode: str = "no_lock"
 
     @classmethod
     def from_env(cls) -> "ScopeConfig":
@@ -36,7 +37,13 @@ class ScopeConfig:
         )
         timeout_ms = int(os.getenv("RIGOL_SCOPE_TIMEOUT_MS", "20000"))
         clear_on_connect = os.getenv("RIGOL_CLEAR_ON_CONNECT", "0").lower() in {"1", "true", "yes", "on"}
-        return cls(resource=resource, timeout_ms=timeout_ms, clear_on_connect=clear_on_connect)
+        visa_access_mode = os.getenv("RIGOL_VISA_ACCESS_MODE", "no_lock")
+        return cls(
+            resource=resource,
+            timeout_ms=timeout_ms,
+            clear_on_connect=clear_on_connect,
+            visa_access_mode=visa_access_mode,
+        )
 
 
 class RigolDS6064:
@@ -57,7 +64,11 @@ class RigolDS6064:
             print("Configured:", self.config.resource, file=sys.stderr)
             print("Detected:", resources, file=sys.stderr)
 
-        self.inst = self.rm.open_resource(self.config.resource, open_timeout=self.config.timeout_ms)
+        open_kwargs = {"open_timeout": self.config.timeout_ms}
+        access_mode = resolve_visa_access_mode(self.config.visa_access_mode)
+        if access_mode is not None:
+            open_kwargs["access_mode"] = access_mode
+        self.inst = self.rm.open_resource(self.config.resource, **open_kwargs)
         self.inst.timeout = self.config.timeout_ms
         self.inst.write_termination = "\n"
         self.inst.read_termination = "\n"
@@ -255,6 +266,19 @@ def validate_channel(channel: str) -> str:
     if channel not in VALID_CHANNELS:
         raise ValueError(f"Invalid channel: {channel}. Use one of {VALID_CHANNELS}")
     return channel
+
+
+def resolve_visa_access_mode(mode: str):
+    normalized = (mode or "no_lock").lower().strip().replace("-", "_")
+    if normalized in {"", "default"}:
+        return None
+    import pyvisa
+
+    try:
+        return pyvisa.constants.AccessModes[normalized]
+    except KeyError as exc:
+        valid = ", ".join(pyvisa.constants.AccessModes.__members__)
+        raise ValueError(f"Invalid VISA access mode: {mode}. Use one of: default, {valid}") from exc
 
 
 def parse_ascii_waveform(raw: str) -> list[float]:

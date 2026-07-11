@@ -15,6 +15,7 @@ Run commands from the project root:
 python src/scope_cli.py list
 python src/scope_cli.py latest
 python src/scope_cli.py health --channels CHANnel1 CHANnel2 CHANnel3 --points 64
+python src/scope_cli.py probe-open --query-idn
 python src/scope_cli.py idn
 python src/scope_cli.py freq --channel CHANnel1
 python src/scope_cli.py period --channel CHANnel1
@@ -36,7 +37,7 @@ USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 
 Valid channels are `CHANnel1`, `CHANnel2`, `CHANnel3`, and `CHANnel4`. Default to `CHANnel1` when the user does not specify a channel.
 
-`RIGOL_SCOPE_TIMEOUT_MS` defaults to `20000`, `RIGOL_CLI_TIMEOUT_MS` defaults to `30000`, and `RIGOL_LOCK_TIMEOUT_MS` defaults to `5000`. The CLI uses a parent-process lock plus a worker subprocess watchdog so concurrent AI calls are rejected as JSON and a stuck VISA read returns JSON instead of hanging the AI session.
+`RIGOL_SCOPE_TIMEOUT_MS` defaults to `20000`, `RIGOL_CLI_TIMEOUT_MS` defaults to `30000`, `RIGOL_LOCK_TIMEOUT_MS` defaults to `5000`, and `RIGOL_VISA_ACCESS_MODE` defaults to `no_lock`. The CLI uses a parent-process lock plus a worker subprocess watchdog so concurrent AI calls are rejected as JSON and a stuck VISA read returns JSON instead of hanging the AI session.
 
 ## Workflow
 
@@ -75,6 +76,8 @@ When handing waveform data to another AI agent, prefer the manifest JSON returne
 If the user asks for the latest already-captured waveform and does not need a fresh acquisition, run `python src/scope_cli.py latest`. This returns `outputs/manifests/latest.json` without touching the oscilloscope hardware.
 
 If the scope front panel shows a waveform but the CLI returns zero points for a channel, run `python src/scope_cli.py diagnose-channel --channel <channel> --points 1200`. This is read-only apart from selecting the waveform source, and reports display state, channel scale/offset/coupling/probe, waveform source, preamble, raw payload length, and parsed point count.
+
+If `list` sees the DS6064 but `idn` times out, run `python src/scope_cli.py probe-open --query-idn`. It reports timed stages for ResourceManager creation, VISA resource enumeration, `open_resource`, session configuration, and optional `*IDN?`, while still using the CLI lock and watchdog.
 
 Run oscilloscope commands strictly one at a time. Do not parallelize VISA calls against the same USB-TMC instrument.
 

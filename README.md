@@ -1,10 +1,12 @@
 # DS6064 Scope Bridge
 
-Safe JSON CLI and Codex skill for controlling RIGOL DS6064 / DS6000 oscilloscopes over USB-TMC with Python, PyVISA, and NI-VISA.
+DS6064 Scope Bridge lets AI agents safely use a RIGOL DS6064 / DS6000 oscilloscope as a measurement tool. It turns natural-language requests like “capture CH1/CH2/CH3 and analyze the PWM timing” into guarded USB-TMC commands, then returns JSON measurements plus CSV, PNG, and manifest files that humans or other AI tools can inspect.
+
+这个项目的目标很直接：把一台本地 RIGOL DS6064 示波器变成 AI 可以可靠调用的实验室仪器接口。它适合嵌入式调试、电源纹波观察、PWM/CAN/时钟波形采集、多通道时序关系分析，以及把示波器数据打包交给其他 AI 做工程判断。
 
 ![RIGOL DS6064 running a three-channel PWM capture](docs/assets/cover.jpg)
 
-这个工程把本地 RIGOL DS6064 示波器封装成一条可被 Codex/AI 安全调用的测量链路：
+它封装的完整链路是：
 
 ```text
 用户自然语言
@@ -255,7 +257,7 @@ USB-TMC 是测试测量仪器协议，不是普通串口。常见卡住原因和
 建议 GitHub 仓库描述：
 
 ```text
-Safe JSON CLI and Codex skill for RIGOL DS6064/DS6000 USB-TMC oscilloscope control and waveform capture.
+AI-ready USB-TMC bridge for RIGOL DS6064/DS6000 oscilloscopes: safe JSON CLI, Codex skill, waveform capture, and CSV/PNG/manifest evidence packages.
 ```
 
 本项目使用 MIT License。贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，硬件安全边界见 [SECURITY.md](SECURITY.md)，版本记录见 [CHANGELOG.md](CHANGELOG.md)。

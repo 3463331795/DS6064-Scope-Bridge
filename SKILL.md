@@ -5,11 +5,15 @@ description: Control and analyze a local RIGOL DS6064 or DS6000-series oscillosc
 
 # DS6064 Scope Bridge
 
-Use this skill from the skill project root to operate the local RIGOL DS6064 through the project CLI. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
+Use this skill from the repository root to operate the local RIGOL DS6064 through the project CLI in `ds6064_scope_bridge/`. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
 
 ## Command Runner
 
-Run commands from the project root. Prefer the virtual environment when it exists:
+Run commands from `ds6064_scope_bridge/`. Prefer the virtual environment when it exists:
+
+```powershell
+Set-Location ds6064_scope_bridge
+```
 
 ```powershell
 .\.venv\Scripts\python.exe src\scope_cli.py <command>
@@ -23,7 +27,7 @@ python src\scope_cli.py <command>
 
 All CLI output is a single JSON object. Parse `ok` first. Hardware-touching commands use `outputs/logs/rigol_ds6064.lock` plus a watchdog so concurrent AI calls are rejected as JSON instead of hanging the session.
 
-All oscilloscope artifacts must stay under the skill project root in the single `outputs/` folder. The CLI derives that root from its own file location instead of a fixed drive path, and returned artifact paths should remain project-relative, for example `outputs/manifests/latest.json`.
+All oscilloscope artifacts must stay under `ds6064_scope_bridge/outputs/`. The CLI derives that root from its own file location instead of a fixed drive path, and returned artifact paths should remain relative to the implementation directory, for example `outputs/manifests/latest.json`.
 
 ## Known Configuration
 
@@ -121,7 +125,7 @@ The CLI blocks dangerous SCPI patterns by default:
 :SYSTem:SECure
 ```
 
-Keep using CLI wrappers instead of raw SCPI. The DS6000 command notes live in `.agents/skills/rigol-ds6064-scope/references/DS6000_SCPI_NOTES.md`; read that file only when low-level SCPI details are needed.
+Keep using CLI wrappers instead of raw SCPI. The DS6000 command notes live in `ds6064_scope_bridge/.agents/skills/rigol-ds6064-scope/references/DS6000_SCPI_NOTES.md`; read that file only when low-level SCPI details are needed.
 
 ## USB-TMC Stability
 

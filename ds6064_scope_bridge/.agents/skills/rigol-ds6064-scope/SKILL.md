@@ -5,7 +5,7 @@ description: Control and analyze a local RIGOL DS6064 or DS6000-series oscillosc
 
 # DS6064 Scope Bridge
 
-Use this skill from the skill project root to operate the local RIGOL DS6064 through the project CLI. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
+Use this skill from the implementation directory `ds6064_scope_bridge/` to operate the local RIGOL DS6064 through the project CLI. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
 
 ## Command Runner
 

@@ -241,6 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_probe_open = sub.add_parser("probe-open", help="Diagnose VISA resource opening in timed read-only stages")
     p_probe_open.add_argument("--access-mode", default=None, help="VISA access mode: no_lock, shared_lock, exclusive_lock, or default")
     p_probe_open.add_argument("--open-timeout-ms", type=int, default=None, help="Override VISA open timeout for this probe")
+    p_probe_open.add_argument("--visa-library", default=None, help="VISA library path or alias, for example @ivi or C:\\Windows\\System32\\visa64.dll")
     p_probe_open.add_argument("--query-idn", action="store_true", help="Query *IDN? after opening the resource")
     sub.add_parser("idn", help="Query *IDN?")
     sub.add_parser("run", help="Start acquisition")
@@ -307,10 +308,11 @@ def probe_open_resource_data(
     *,
     access_mode: str | None = None,
     open_timeout_ms: int | None = None,
+    visa_library: str | None = None,
     query_idn: bool = False,
 ) -> dict:
     import pyvisa
-    from rigol_ds6064 import resolve_visa_access_mode
+    from rigol_ds6064 import normalize_optional_env, resolve_visa_access_mode
 
     config = ScopeConfig.from_env()
     if access_mode is not None:
@@ -319,6 +321,15 @@ def probe_open_resource_data(
             timeout_ms=config.timeout_ms,
             clear_on_connect=config.clear_on_connect,
             visa_access_mode=access_mode,
+            visa_library=config.visa_library,
+        )
+    if visa_library is not None:
+        config = ScopeConfig(
+            resource=config.resource,
+            timeout_ms=config.timeout_ms,
+            clear_on_connect=config.clear_on_connect,
+            visa_access_mode=config.visa_access_mode,
+            visa_library=normalize_optional_env(visa_library),
         )
     if open_timeout_ms is not None:
         if open_timeout_ms <= 0:
@@ -328,6 +339,7 @@ def probe_open_resource_data(
             timeout_ms=open_timeout_ms,
             clear_on_connect=config.clear_on_connect,
             visa_access_mode=config.visa_access_mode,
+            visa_library=config.visa_library,
         )
 
     stages: list[dict] = []
@@ -349,8 +361,8 @@ def probe_open_resource_data(
                 f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
     try:
-        rm = pyvisa.ResourceManager()
-        stage("resource_manager", True)
+        rm = pyvisa.ResourceManager(config.visa_library)
+        stage("resource_manager", True, visa_library=str(rm.visalib))
 
         resources = list(rm.list_resources())
         stage(
@@ -395,6 +407,7 @@ def probe_open_resource_data(
                 "resource": config.resource,
                 "timeout_ms": config.timeout_ms,
                 "access_mode": config.visa_access_mode,
+                "visa_library": config.visa_library,
                 "clear_on_connect": config.clear_on_connect,
             },
             "stages": stages,
@@ -408,6 +421,7 @@ def probe_open_resource_data(
                 "resource": config.resource,
                 "timeout_ms": config.timeout_ms,
                 "access_mode": config.visa_access_mode,
+                "visa_library": config.visa_library,
                 "clear_on_connect": config.clear_on_connect,
             },
             "stages": stages,
@@ -593,6 +607,7 @@ def main(argv: list[str] | None = None) -> None:
                 probe_open_resource_data(
                     access_mode=args.access_mode,
                     open_timeout_ms=args.open_timeout_ms,
+                    visa_library=args.visa_library,
                     query_idn=args.query_idn,
                 )
             )

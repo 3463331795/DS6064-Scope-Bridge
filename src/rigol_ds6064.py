@@ -28,6 +28,7 @@ class ScopeConfig:
     timeout_ms: int = 20000
     clear_on_connect: bool = False
     visa_access_mode: str = "no_lock"
+    visa_library: str | None = None
 
     @classmethod
     def from_env(cls) -> "ScopeConfig":
@@ -38,11 +39,13 @@ class ScopeConfig:
         timeout_ms = int(os.getenv("RIGOL_SCOPE_TIMEOUT_MS", "20000"))
         clear_on_connect = os.getenv("RIGOL_CLEAR_ON_CONNECT", "0").lower() in {"1", "true", "yes", "on"}
         visa_access_mode = os.getenv("RIGOL_VISA_ACCESS_MODE", "no_lock")
+        visa_library = normalize_optional_env(os.getenv("RIGOL_VISA_LIBRARY"))
         return cls(
             resource=resource,
             timeout_ms=timeout_ms,
             clear_on_connect=clear_on_connect,
             visa_access_mode=visa_access_mode,
+            visa_library=visa_library,
         )
 
 
@@ -57,7 +60,7 @@ class RigolDS6064:
     def connect(self) -> "RigolDS6064":
         import pyvisa
 
-        self.rm = pyvisa.ResourceManager()
+        self.rm = pyvisa.ResourceManager(self.config.visa_library)
         resources = self.rm.list_resources()
         if resources and self.config.resource not in resources:
             print("Warning: configured resource not found in list_resources().", file=sys.stderr)
@@ -266,6 +269,15 @@ def validate_channel(channel: str) -> str:
     if channel not in VALID_CHANNELS:
         raise ValueError(f"Invalid channel: {channel}. Use one of {VALID_CHANNELS}")
     return channel
+
+
+def normalize_optional_env(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if normalized.lower() in {"", "default", "auto", "none"}:
+        return None
+    return normalized
 
 
 def resolve_visa_access_mode(mode: str):

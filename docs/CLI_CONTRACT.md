@@ -16,7 +16,7 @@ Default connection:
 USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 ```
 
-The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`. VISA resource opening defaults to `RIGOL_VISA_ACCESS_MODE=no_lock`.
+The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`. VISA resource opening defaults to `RIGOL_VISA_ACCESS_MODE=no_lock` and `RIGOL_VISA_LIBRARY=auto`.
 
 Hardware-touching commands take an exclusive lock at `outputs/logs/rigol_ds6064.lock` before starting the worker subprocess. If the lock cannot be acquired, the CLI returns a JSON error instead of allowing concurrent USB-TMC access.
 
@@ -164,6 +164,7 @@ Useful options:
 ```powershell
 .\.venv\Scripts\python.exe src\scope_cli.py probe-open --access-mode no_lock --open-timeout-ms 5000 --query-idn
 .\.venv\Scripts\python.exe src\scope_cli.py probe-open --access-mode default --open-timeout-ms 5000
+.\.venv\Scripts\python.exe src\scope_cli.py probe-open --visa-library C:\Windows\System32\visa64.dll --open-timeout-ms 5000
 ```
 
 Stable fields:
@@ -177,6 +178,7 @@ Stable fields:
     "resource": "USB0::0x1AB1::0x04B0::DS6C134300118::INSTR",
     "timeout_ms": 20000,
     "access_mode": "no_lock",
+    "visa_library": null,
     "clear_on_connect": false
   },
   "stages": []
@@ -283,6 +285,7 @@ USB-TMC sessions can appear to hang when a previous command leaves unread data, 
 - Start waveform captures at `--points 1200`; use `12000` only when the link is stable and more detail is needed.
 - Keep `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` for normal USB-TMC work.
 - Keep `RIGOL_VISA_ACCESS_MODE=no_lock` unless `probe-open` shows a backend-specific reason to test `default`, `shared_lock`, or `exclusive_lock`.
+- Keep `RIGOL_VISA_LIBRARY=auto` for normal use. If `open_resource` hangs, compare `probe-open --visa-library C:\Windows\System32\visa32.dll` and `probe-open --visa-library C:\Windows\System32\visa64.dll` under the watchdog.
 - Do not run concurrent AI/tool calls against the DS6064. Hardware-touching CLI commands are guarded by `outputs/logs/rigol_ds6064.lock`; wait for the active command or retry after it finishes.
 - Frequent open/close can be unstable on USB-TMC; if this becomes a blocker, preserve this CLI contract and add a persistent queued `scope_server.py` later.
 - If the USB resource disappears after idle time, disable Windows USB selective suspend.

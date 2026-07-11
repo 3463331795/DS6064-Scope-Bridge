@@ -16,7 +16,7 @@ Default connection:
 USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 ```
 
-The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=15000`.
+The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`.
 
 ## JSON Envelope
 
@@ -48,6 +48,23 @@ Agents should parse `ok` first. Do not rely on stderr for machine decisions.
 2. If `status` is `pass` or acceptable `degraded`, run `capture` or `capture-multi`.
 3. Use returned `manifest_path` first, then CSV/PNG paths for downstream analysis.
 4. If a channel returns zero points, run `diagnose-channel` for that channel.
+
+## Measurement Policy
+
+For direct scalar questions, use the oscilloscope's built-in measurement engine first:
+
+```powershell
+.\.venv\Scripts\python.exe src\scope_cli.py freq --channel CHANnel1
+.\.venv\Scripts\python.exe src\scope_cli.py period --channel CHANnel1
+.\.venv\Scripts\python.exe src\scope_cli.py duty --channel CHANnel1
+.\.venv\Scripts\python.exe src\scope_cli.py vpp --channel CHANnel1
+```
+
+The `freq`, `period`, `duty`, and `vpp` commands call the wrapped `:MEASure:ITEM?` path and return the DS6064's own measurement result. Treat those values as authoritative for frequency, period, duty, and peak-to-peak voltage.
+
+Use `capture`, `summary`, or `analyze-pwm` when the user needs waveform evidence, timing relationships, CSV/PNG artifacts, or visual quality analysis. If a built-in measurement and a CSV-derived estimate disagree, report the built-in measurement as primary and label the waveform result as an estimate.
+
+If a built-in measurement query times out, do not retry in parallel. Report the timeout, then optionally fall back to `capture --points 1200` or `analyze-pwm --points 1200 --save`.
 
 ## Capture Evidence Package
 
@@ -221,3 +238,16 @@ The CLI does not expose arbitrary raw SCPI. Dangerous patterns are blocked in th
 - `identity.ok=false`: close Ultra Sigma and other VISA tools, then retry after USB replug.
 - `parsed_points=0`: run `diagnose-channel`, confirm the scope channel is enabled, and inspect raw payload fields.
 - file output errors: verify `outputs/csv`, `outputs/images`, and `outputs/logs` are writable.
+
+## USB-TMC Stability Notes
+
+USB-TMC sessions can appear to hang when a previous command leaves unread data, another program owns the device, or waveform reads exceed the current timeout. Keep these rules in the agent contract:
+
+- Close Ultra Sigma and other VISA tools before Python access.
+- Any SCPI command containing `?` must consume its reply before the next command.
+- Start waveform captures at `--points 1200`; use `12000` only when the link is stable and more detail is needed.
+- Keep `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` for normal USB-TMC work.
+- Do not run concurrent AI/tool calls against the DS6064. Serialize all VISA operations.
+- Frequent open/close can be unstable on USB-TMC; if this becomes a blocker, preserve this CLI contract and add a persistent queued `scope_server.py` later.
+- If the USB resource disappears after idle time, disable Windows USB selective suspend.
+- On Windows, prefer NI-VISA when the backend intermittently loses the instrument.

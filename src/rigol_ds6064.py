@@ -25,7 +25,7 @@ VALID_CHANNELS = ["CHANnel1", "CHANnel2", "CHANnel3", "CHANnel4"]
 @dataclass(frozen=True)
 class ScopeConfig:
     resource: str
-    timeout_ms: int = 5000
+    timeout_ms: int = 20000
     clear_on_connect: bool = False
 
     @classmethod
@@ -34,7 +34,7 @@ class ScopeConfig:
             "RIGOL_SCOPE_RESOURCE",
             "USB0::0x1AB1::0x04B0::DS6C134300118::INSTR",
         )
-        timeout_ms = int(os.getenv("RIGOL_SCOPE_TIMEOUT_MS", "5000"))
+        timeout_ms = int(os.getenv("RIGOL_SCOPE_TIMEOUT_MS", "20000"))
         clear_on_connect = os.getenv("RIGOL_CLEAR_ON_CONNECT", "0").lower() in {"1", "true", "yes", "on"}
         return cls(resource=resource, timeout_ms=timeout_ms, clear_on_connect=clear_on_connect)
 

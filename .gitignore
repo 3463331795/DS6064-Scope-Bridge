@@ -4,4 +4,6 @@ __pycache__/
 *.py[cod]
 outputs/csv/*.csv
 outputs/images/*.png
-outputs/logs/*.log
+outputs/logs/*
+!outputs/logs/.gitkeep
+outputs/manifests/*.json

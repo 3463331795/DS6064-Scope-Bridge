@@ -16,6 +16,10 @@ python src/scope_cli.py list
 python src/scope_cli.py latest
 python src/scope_cli.py health --channels CHANnel1 CHANnel2 CHANnel3 --points 64
 python src/scope_cli.py idn
+python src/scope_cli.py freq --channel CHANnel1
+python src/scope_cli.py period --channel CHANnel1
+python src/scope_cli.py duty --channel CHANnel1
+python src/scope_cli.py vpp --channel CHANnel1
 python src/scope_cli.py capture --channel CHANnel1 --points 1200
 python src/scope_cli.py capture-multi --channels CHANnel1 CHANnel2 CHANnel3 --points 1200
 python src/scope_cli.py diagnose-channel --channel CHANnel3 --points 1200
@@ -32,7 +36,7 @@ USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 
 Valid channels are `CHANnel1`, `CHANnel2`, `CHANnel3`, and `CHANnel4`. Default to `CHANnel1` when the user does not specify a channel.
 
-`RIGOL_CLI_TIMEOUT_MS` defaults to `15000`. The CLI uses a worker subprocess watchdog so a stuck VISA read returns JSON instead of hanging the AI session.
+`RIGOL_SCOPE_TIMEOUT_MS` defaults to `20000` and `RIGOL_CLI_TIMEOUT_MS` defaults to `30000`. The CLI uses a worker subprocess watchdog so a stuck VISA read returns JSON instead of hanging the AI session.
 
 ## Workflow
 
@@ -50,6 +54,17 @@ For signal inspection requests:
 3. Run `python src/scope_cli.py summary --channel <channel> --points 1200` only when a quick waveform-statistics summary is enough.
 4. Inspect the returned `manifest_path` first, then the generated CSV/PNG paths.
 5. Report connection status, device identity, channel, measurements, manifest path, waveform files, and an engineering interpretation.
+
+For direct scalar measurement questions, prefer the oscilloscope's built-in measurement engine first:
+
+```powershell
+python src/scope_cli.py freq --channel CHANnel1
+python src/scope_cli.py period --channel CHANnel1
+python src/scope_cli.py duty --channel CHANnel1
+python src/scope_cli.py vpp --channel CHANnel1
+```
+
+Use waveform-derived estimates only as secondary evidence or fallback. When the built-in measurement and CSV-derived estimate disagree, treat the built-in measurement as authoritative for frequency/period/duty and clearly label the CSV result as an estimate.
 
 The stable CLI contract is documented in `docs/CLI_CONTRACT.md`. Prefer that document when another AI agent needs to call this project.
 
@@ -69,7 +84,20 @@ For PWM inspection, prefer `python src/scope_cli.py analyze-pwm --channel <chann
 
 If the instrument session is unstable after a capture, use `python src/scope_cli.py analyze-pwm-file --csv <path>` to analyze a saved CSV offline. CSV files saved after this update include a `time_s` column when the scope reports a valid sample interval, so offline PWM analysis can recover frequency and duty cycle without reopening USB-TMC.
 
-The DS6064 `:MEASure:ITEM?` query path can be unstable on this local USB-TMC setup. Prefer `capture` and waveform-derived statistics unless the user explicitly asks for the scope's built-in measurement engine.
+The DS6064 `:MEASure:ITEM?` query path is the preferred source for direct frequency, period, duty, and Vpp questions because it uses the instrument's own measurement engine. If that query times out on USB-TMC, report the timeout, then fall back to `capture` or `analyze-pwm` and label the result as waveform-derived.
+
+## USB-TMC Stability
+
+USB-TMC is a test-and-measurement protocol, not a serial console. Follow these rules to avoid stuck sessions:
+
+- Close Ultra Sigma and other VISA tools before Python access; only one controller should own the DS6064.
+- Commands ending in `?` must be handled through query/read paths so their replies are consumed before the next command.
+- Keep waveform captures bounded first: use `--points 1200` for routine checks and increase only when needed.
+- Use longer timeouts for USB-TMC waveform reads: `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` are the baseline.
+- Never run multiple VISA commands in parallel against this scope. Queue actions serially.
+- If frequent open/close becomes unstable, move the same CLI contract behind a future persistent `scope_server.py` queue instead of adding raw SCPI calls.
+- If Windows drops the device after idle time, disable USB selective suspend for the active power plan.
+- Prefer NI-VISA on Windows if the VISA backend intermittently loses the USB-TMC resource.
 
 For CAN, do not claim protocol correctness from one analog waveform alone. Comment on level, timing, and signal quality, and recommend a proper decoder or differential capture when needed.
 

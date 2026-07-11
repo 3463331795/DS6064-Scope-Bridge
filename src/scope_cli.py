@@ -34,11 +34,11 @@ def fail(message: str, code: int = 1) -> None:
 
 
 def parse_cli_timeout_ms() -> int:
-    value = os.getenv("RIGOL_CLI_TIMEOUT_MS", "15000")
+    value = os.getenv("RIGOL_CLI_TIMEOUT_MS", "30000")
     try:
         timeout_ms = int(value)
     except ValueError:
-        timeout_ms = 15000
+        timeout_ms = 30000
     return max(timeout_ms, 1000)
 
 

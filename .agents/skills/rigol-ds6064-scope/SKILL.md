@@ -3,9 +3,9 @@ name: rigol-ds6064-scope
 description: Control and analyze a local RIGOL DS6064 or DS6000-series oscilloscope over USB-TMC with Python, PyVISA, NI-VISA, and safe SCPI wrappers. Use when Codex or another AI agent needs to list VISA resources, query identity, read built-in measurements, capture CH1-CH4 waveforms, save CSV/PNG/manifest artifacts, diagnose USB-TMC stability, or analyze PWM, CAN, clock, noise, ringing, overshoot, and power ripple signals.
 ---
 
-# RIGOL DS6064 Scope Bridge
+# DS6064 Scope Bridge
 
-Use this skill in `G:\资料\Agants\AI_DS6064` to operate the local RIGOL DS6064 through the project CLI. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
+Use this skill from the skill project root to operate the local RIGOL DS6064 through the project CLI. Prefer the CLI over raw SCPI. Do not send arbitrary SCPI unless the user explicitly asks for low-level recovery and the command has been checked against the safety rules.
 
 ## Command Runner
 
@@ -22,6 +22,8 @@ python src\scope_cli.py <command>
 ```
 
 All CLI output is a single JSON object. Parse `ok` first. Hardware-touching commands use `outputs/logs/rigol_ds6064.lock` plus a watchdog so concurrent AI calls are rejected as JSON instead of hanging the session.
+
+All oscilloscope artifacts must stay under the skill project root in the single `outputs/` folder. The CLI derives that root from its own file location instead of a fixed drive path, and returned artifact paths should remain project-relative, for example `outputs/manifests/latest.json`.
 
 ## Known Configuration
 

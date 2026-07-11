@@ -14,7 +14,7 @@ sys.path.insert(0, str(SRC))
 
 from rigol_ds6064 import create_resource_manager, normalize_duty_percent, normalize_optional_env, parse_ascii_waveform, parse_waveform_payload, resolve_visa_access_mode, scale_waveform_values, validate_channel
 from safety import assert_safe_scpi
-from scope_cli import InstrumentLock, command_uses_instrument, normalize_measurement_result, parse_lock_timeout_ms
+from scope_cli import InstrumentLock, artifact_path_text, command_uses_instrument, normalize_measurement_result, output_path, parse_lock_timeout_ms
 from waveform_analysis import analyze_pwm, basic_waveform_stats, load_waveform_csv, save_json_manifest, save_multi_waveform_csv, save_waveform_csv
 
 
@@ -91,6 +91,11 @@ class OfflineParserTests(unittest.TestCase):
         self.assertIsNone(invalid["value"])
         self.assertEqual(invalid["raw_value"], 9.9e37)
         self.assertIn("invalid", invalid["error"])
+
+    def test_output_paths_are_project_root_relative(self):
+        path = output_path("manifests", "latest.json")
+        self.assertEqual(path, PROJECT_ROOT / "outputs" / "manifests" / "latest.json")
+        self.assertEqual(artifact_path_text(path), str(Path("outputs") / "manifests" / "latest.json"))
 
     def test_create_resource_manager_omits_none_library(self):
         class FakePyvisa:

@@ -24,6 +24,9 @@ from waveform_analysis import (
 )
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 MEASUREMENT_COMMANDS = {"vpp", "freq", "period", "duty", "summary", "capture", "capture-multi", "analyze-pwm"}
 INSTRUMENT_COMMANDS = {
     "list",
@@ -57,6 +60,32 @@ def fail(message: str, code: int = 1, data: dict | None = None) -> None:
         payload["data"] = data
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     sys.exit(code)
+
+
+def project_path(*parts: str) -> Path:
+    return PROJECT_ROOT.joinpath(*parts)
+
+
+def output_path(*parts: str) -> Path:
+    return project_path("outputs", *parts)
+
+
+def path_from_env(name: str, default_path: Path) -> Path:
+    value = os.getenv(name)
+    path = Path(value) if value else default_path
+    if path.is_absolute():
+        return path
+    return PROJECT_ROOT / path
+
+
+def artifact_path_text(path: Path | str | None) -> str | None:
+    if path is None:
+        return None
+    path = Path(path)
+    try:
+        return str(path.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except ValueError:
+        return str(path)
 
 
 def parse_cli_timeout_ms() -> int:
@@ -129,7 +158,7 @@ class InstrumentLock:
 @contextmanager
 def acquire_instrument_lock(timeout_ms: int | None = None):
     timeout_ms = parse_lock_timeout_ms() if timeout_ms is None else max(timeout_ms, 0)
-    lock_path = Path(os.getenv("RIGOL_LOCK_PATH", "outputs/logs/rigol_ds6064.lock"))
+    lock_path = path_from_env("RIGOL_LOCK_PATH", output_path("logs", "rigol_ds6064.lock"))
     lock = InstrumentLock(lock_path)
     deadline = time.monotonic() + timeout_ms / 1000.0
     while True:
@@ -169,7 +198,7 @@ def run_worker_with_watchdog(argv: list[str]) -> None:
     env = os.environ.copy()
     trace_path = None
     if argv and argv[0] == "probe-open":
-        trace_path = Path("outputs/logs/probe_open_last.jsonl")
+        trace_path = output_path("logs", "probe_open_last.jsonl")
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         trace_path.write_text("", encoding="utf-8")
         env["RIGOL_PROBE_TRACE_PATH"] = str(trace_path)
@@ -178,7 +207,7 @@ def run_worker_with_watchdog(argv: list[str]) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        cwd=Path.cwd(),
+        cwd=PROJECT_ROOT,
         env=env,
     )
     try:
@@ -446,15 +475,15 @@ def probe_open_resource_data(
 
 def check_output_dirs() -> dict:
     results = {}
-    for path in [Path("outputs/csv"), Path("outputs/images"), Path("outputs/logs"), Path("outputs/manifests")]:
+    for path in [output_path("csv"), output_path("images"), output_path("logs"), output_path("manifests")]:
         try:
             path.mkdir(parents=True, exist_ok=True)
             probe = path / ".health_write_test"
             probe.write_text("ok", encoding="utf-8")
             probe.unlink(missing_ok=True)
-            results[str(path)] = {"ok": True}
+            results[artifact_path_text(path)] = {"ok": True}
         except Exception as exc:
-            results[str(path)] = {"ok": False, "error": str(exc)}
+            results[artifact_path_text(path)] = {"ok": False, "error": str(exc)}
     return results
 
 
@@ -516,7 +545,7 @@ def scalar_measurement_payload(channel: str, output_key: str, label: str, reader
 
 
 def latest_manifest_path() -> Path:
-    return Path("outputs/manifests/latest.json")
+    return output_path("manifests", "latest.json")
 
 
 def read_latest_manifest() -> None:
@@ -527,7 +556,7 @@ def read_latest_manifest() -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         fail(f"Latest manifest is not valid JSON: {exc}", code=2)
-    ok({"latest_path": str(path), "manifest": data})
+    ok({"latest_path": artifact_path_text(path), "manifest": data})
 
 
 def capture_manifest_base(
@@ -549,15 +578,15 @@ def capture_manifest_base(
         "points_requested": points_requested,
         "sample_interval_s": sample_interval_s,
         "files": {
-            "csv_path": str(csv_path) if csv_path else None,
-            "image_path": str(image_path) if image_path else None,
+            "csv_path": artifact_path_text(csv_path),
+            "image_path": artifact_path_text(image_path),
             "manifest_path": None,
         },
     }
 
 
 def write_capture_manifest(manifest: dict, manifest_path: Path) -> Path:
-    manifest.setdefault("files", {})["manifest_path"] = str(manifest_path)
+    manifest.setdefault("files", {})["manifest_path"] = artifact_path_text(manifest_path)
     return save_json_manifest(manifest, manifest_path, latest_path=latest_manifest_path())
 
 
@@ -725,9 +754,9 @@ def main(argv: list[str] | None = None) -> None:
                 values = capture["values"]
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 channel_short = args.channel.replace("CHANnel", "CH")
-                csv_path = Path("outputs/csv") / f"{timestamp}_{channel_short}.csv"
-                image_path = Path("outputs/images") / f"{timestamp}_{channel_short}.png"
-                manifest_path = Path("outputs/manifests") / f"{timestamp}_{channel_short}.json"
+                csv_path = output_path("csv", f"{timestamp}_{channel_short}.csv")
+                image_path = output_path("images", f"{timestamp}_{channel_short}.png")
+                manifest_path = output_path("manifests", f"{timestamp}_{channel_short}.json")
 
                 sample_interval_s = capture.get("sample_interval_s")
                 stats = basic_waveform_stats(values)
@@ -758,18 +787,18 @@ def main(argv: list[str] | None = None) -> None:
                         "points_requested": args.points,
                         "points_captured": len(values),
                         "sample_interval_s": capture.get("sample_interval_s"),
-                        "csv_path": str(csv_path),
-                        "image_path": str(image_path),
-                        "manifest_path": str(manifest_path),
+                        "csv_path": artifact_path_text(csv_path),
+                        "image_path": artifact_path_text(image_path),
+                        "manifest_path": artifact_path_text(manifest_path),
                         "stats": stats,
                     }
                 )
             elif args.cmd == "capture-multi":
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 channel_suffix = "_".join(channel.replace("CHANnel", "CH") for channel in args.channels)
-                csv_path = Path("outputs/csv") / f"{timestamp}_{channel_suffix}_multi.csv"
-                image_path = Path("outputs/images") / f"{timestamp}_{channel_suffix}_multi.png"
-                manifest_path = Path("outputs/manifests") / f"{timestamp}_{channel_suffix}_multi.json"
+                csv_path = output_path("csv", f"{timestamp}_{channel_suffix}_multi.csv")
+                image_path = output_path("images", f"{timestamp}_{channel_suffix}_multi.png")
+                manifest_path = output_path("manifests", f"{timestamp}_{channel_suffix}_multi.json")
                 waveforms: dict[str, list[float]] = {}
                 channel_results: list[dict] = []
                 sample_intervals: list[float] = []
@@ -820,18 +849,18 @@ def main(argv: list[str] | None = None) -> None:
                         "channels": args.channels,
                         "points_requested": args.points,
                         "sample_interval_s": common_sample_interval_s,
-                        "csv_path": str(csv_path),
-                        "image_path": str(image_path),
-                        "manifest_path": str(manifest_path),
+                        "csv_path": artifact_path_text(csv_path),
+                        "image_path": artifact_path_text(image_path),
+                        "manifest_path": artifact_path_text(manifest_path),
                         "channel_results": channel_results,
                     }
                 )
             elif args.cmd == "snapshot":
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 channel_suffix = "_".join(channel.replace("CHANnel", "CH") for channel in args.channels)
-                csv_path = Path("outputs/csv") / f"{timestamp}_{channel_suffix}_snapshot.csv"
-                image_path = Path("outputs/images") / f"{timestamp}_{channel_suffix}_snapshot.png"
-                manifest_path = Path("outputs/manifests") / f"{timestamp}_{channel_suffix}_snapshot.json"
+                csv_path = output_path("csv", f"{timestamp}_{channel_suffix}_snapshot.csv")
+                image_path = output_path("images", f"{timestamp}_{channel_suffix}_snapshot.png")
+                manifest_path = output_path("manifests", f"{timestamp}_{channel_suffix}_snapshot.json")
                 identity = scope_identity_or_none(scope)
                 measurements: dict[str, dict] = {}
                 waveforms: dict[str, list[float]] = {}
@@ -894,9 +923,9 @@ def main(argv: list[str] | None = None) -> None:
                         "points_requested": args.points,
                         "sample_interval_s": common_sample_interval_s,
                         "measurements": measurements,
-                        "csv_path": str(csv_path),
-                        "image_path": str(image_path),
-                        "manifest_path": str(manifest_path),
+                        "csv_path": artifact_path_text(csv_path),
+                        "image_path": artifact_path_text(image_path),
+                        "manifest_path": artifact_path_text(manifest_path),
                         "channel_results": channel_results,
                     }
                 )
@@ -916,9 +945,9 @@ def main(argv: list[str] | None = None) -> None:
                 if args.save:
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     channel_short = args.channel.replace("CHANnel", "CH")
-                    csv_path = Path("outputs/csv") / f"{timestamp}_{channel_short}_pwm.csv"
-                    image_path = Path("outputs/images") / f"{timestamp}_{channel_short}_pwm.png"
-                    manifest_path = Path("outputs/manifests") / f"{timestamp}_{channel_short}_pwm.json"
+                    csv_path = output_path("csv", f"{timestamp}_{channel_short}_pwm.csv")
+                    image_path = output_path("images", f"{timestamp}_{channel_short}_pwm.png")
+                    manifest_path = output_path("manifests", f"{timestamp}_{channel_short}_pwm.json")
                     sample_interval_s = capture.get("sample_interval_s")
                     save_waveform_csv(values, csv_path, sample_interval_s=sample_interval_s)
                     plot_waveform(values, image_path, sample_interval_s=sample_interval_s)
@@ -940,9 +969,9 @@ def main(argv: list[str] | None = None) -> None:
                         }
                     )
                     write_capture_manifest(manifest, manifest_path)
-                    data["csv_path"] = str(csv_path)
-                    data["image_path"] = str(image_path)
-                    data["manifest_path"] = str(manifest_path)
+                    data["csv_path"] = artifact_path_text(csv_path)
+                    data["image_path"] = artifact_path_text(image_path)
+                    data["manifest_path"] = artifact_path_text(manifest_path)
                 ok(data)
         finally:
             scope.close()

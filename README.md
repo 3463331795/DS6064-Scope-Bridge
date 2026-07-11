@@ -1,4 +1,4 @@
-# AI DS6064 USB-TMC Bridge
+# DS6064 Scope Bridge
 
 这个工程把本地 RIGOL DS6064 示波器封装成一条可被 Codex/AI 安全调用的测量链路：
 
@@ -72,6 +72,8 @@ outputs/manifests/20260711_160032_CH1_CH2_CH3_multi.json
 ```
 
 `outputs/csv`、`outputs/images`、`outputs/manifests` 中的采集产物默认被 `.gitignore` 忽略。`outputs/chm_extract/` 是从编程手册 CHM 解包出的临时资料，也被忽略，不属于源码交付面。
+
+所有示波器产物都必须放在当前 skill 项目根目录下的单一 `outputs/` 文件夹中。CLI 会从自身所在位置动态推导项目根目录，不使用固定盘符路径，也不依赖调用命令时的当前工作目录。
 
 ## 环境要求
 

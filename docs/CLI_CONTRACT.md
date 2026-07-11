@@ -18,7 +18,7 @@ USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 
 The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`. VISA resource opening defaults to `RIGOL_VISA_ACCESS_MODE=no_lock` and `RIGOL_VISA_LIBRARY=auto`.
 
-Hardware-touching commands take an exclusive lock at `outputs/logs/rigol_ds6064.lock` before starting the worker subprocess. If the lock cannot be acquired, the CLI returns a JSON error instead of allowing concurrent USB-TMC access.
+Hardware-touching commands take an exclusive lock at `outputs/logs/rigol_ds6064.lock` under the skill project root before starting the worker subprocess. If the lock cannot be acquired, the CLI returns a JSON error instead of allowing concurrent USB-TMC access.
 
 ## JSON Envelope
 
@@ -73,7 +73,7 @@ If a built-in measurement query times out, do not retry in parallel. Report the 
 
 ## Capture Evidence Package
 
-File-producing commands write an AI-friendly manifest under `outputs/manifests/`, refresh `outputs/manifests/latest.json`, and return `manifest_path` in the JSON response. Treat the manifest as the primary handoff artifact for another AI agent.
+File-producing commands always write artifacts under the skill project root, inside the single `outputs/` folder. The CLI derives that root from its own location instead of a fixed drive path, so outputs do not depend on the caller's current working directory. It writes an AI-friendly manifest under `outputs/manifests/`, refreshes `outputs/manifests/latest.json`, and returns `manifest_path` in the JSON response. Treat the manifest as the primary handoff artifact for another AI agent.
 
 Stable manifest fields:
 

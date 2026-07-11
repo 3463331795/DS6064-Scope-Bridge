@@ -36,7 +36,7 @@ USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 
 Valid channels are `CHANnel1`, `CHANnel2`, `CHANnel3`, and `CHANnel4`. Default to `CHANnel1` when the user does not specify a channel.
 
-`RIGOL_SCOPE_TIMEOUT_MS` defaults to `20000` and `RIGOL_CLI_TIMEOUT_MS` defaults to `30000`. The CLI uses a worker subprocess watchdog so a stuck VISA read returns JSON instead of hanging the AI session.
+`RIGOL_SCOPE_TIMEOUT_MS` defaults to `20000`, `RIGOL_CLI_TIMEOUT_MS` defaults to `30000`, and `RIGOL_LOCK_TIMEOUT_MS` defaults to `5000`. The CLI uses a parent-process lock plus a worker subprocess watchdog so concurrent AI calls are rejected as JSON and a stuck VISA read returns JSON instead of hanging the AI session.
 
 ## Workflow
 
@@ -94,7 +94,7 @@ USB-TMC is a test-and-measurement protocol, not a serial console. Follow these r
 - Commands ending in `?` must be handled through query/read paths so their replies are consumed before the next command.
 - Keep waveform captures bounded first: use `--points 1200` for routine checks and increase only when needed.
 - Use longer timeouts for USB-TMC waveform reads: `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` are the baseline.
-- Never run multiple VISA commands in parallel against this scope. Queue actions serially.
+- Never run multiple VISA commands in parallel against this scope. The CLI creates `outputs/logs/rigol_ds6064.lock`; if another command owns it, wait or retry after the active command finishes.
 - If frequent open/close becomes unstable, move the same CLI contract behind a future persistent `scope_server.py` queue instead of adding raw SCPI calls.
 - If Windows drops the device after idle time, disable USB selective suspend for the active power plan.
 - Prefer NI-VISA on Windows if the VISA backend intermittently loses the USB-TMC resource.

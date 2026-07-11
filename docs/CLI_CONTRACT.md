@@ -16,7 +16,9 @@ Default connection:
 USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
 ```
 
-The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`.
+The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`.
+
+Hardware-touching commands take an exclusive lock at `outputs/logs/rigol_ds6064.lock` before starting the worker subprocess. If the lock cannot be acquired, the CLI returns a JSON error instead of allowing concurrent USB-TMC access.
 
 ## JSON Envelope
 
@@ -247,7 +249,7 @@ USB-TMC sessions can appear to hang when a previous command leaves unread data, 
 - Any SCPI command containing `?` must consume its reply before the next command.
 - Start waveform captures at `--points 1200`; use `12000` only when the link is stable and more detail is needed.
 - Keep `RIGOL_SCOPE_TIMEOUT_MS=20000` and `RIGOL_CLI_TIMEOUT_MS=30000` for normal USB-TMC work.
-- Do not run concurrent AI/tool calls against the DS6064. Serialize all VISA operations.
+- Do not run concurrent AI/tool calls against the DS6064. Hardware-touching CLI commands are guarded by `outputs/logs/rigol_ds6064.lock`; wait for the active command or retry after it finishes.
 - Frequent open/close can be unstable on USB-TMC; if this becomes a blocker, preserve this CLI contract and add a persistent queued `scope_server.py` later.
 - If the USB resource disappears after idle time, disable Windows USB selective suspend.
 - On Windows, prefer NI-VISA when the backend intermittently loses the instrument.

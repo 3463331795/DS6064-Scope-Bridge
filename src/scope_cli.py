@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +24,24 @@ from waveform_analysis import (
 
 
 MEASUREMENT_COMMANDS = {"vpp", "freq", "period", "duty", "summary", "capture", "capture-multi", "analyze-pwm"}
+INSTRUMENT_COMMANDS = {
+    "list",
+    "health",
+    "idn",
+    "run",
+    "stop",
+    "single",
+    "autoscale",
+    "vpp",
+    "freq",
+    "period",
+    "duty",
+    "summary",
+    "capture",
+    "capture-multi",
+    "diagnose-channel",
+    "analyze-pwm",
+}
 
 
 def ok(data: dict) -> None:
@@ -42,10 +62,101 @@ def parse_cli_timeout_ms() -> int:
     return max(timeout_ms, 1000)
 
 
+def parse_lock_timeout_ms() -> int:
+    value = os.getenv("RIGOL_LOCK_TIMEOUT_MS", "5000")
+    try:
+        timeout_ms = int(value)
+    except ValueError:
+        timeout_ms = 5000
+    return max(timeout_ms, 0)
+
+
+def command_uses_instrument(argv: list[str]) -> bool:
+    return bool(argv) and argv[0] in INSTRUMENT_COMMANDS
+
+
+class InstrumentLock:
+    def __init__(self, path: Path):
+        self.path = path
+        self.handle = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.handle = self.path.open("a+", encoding="utf-8")
+        try:
+            self.handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.lockf(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.handle.close()
+            self.handle = None
+            raise
+        self.handle.seek(0)
+        self.handle.truncate()
+        self.handle.write(f"pid={os.getpid()} acquired_at={datetime.now().isoformat()}\n")
+        self.handle.flush()
+
+    def release(self) -> None:
+        if self.handle is None:
+            return
+        try:
+            self.handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.lockf(self.handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.handle.close()
+            self.handle = None
+
+
+@contextmanager
+def acquire_instrument_lock(timeout_ms: int | None = None):
+    timeout_ms = parse_lock_timeout_ms() if timeout_ms is None else max(timeout_ms, 0)
+    lock_path = Path(os.getenv("RIGOL_LOCK_PATH", "outputs/logs/rigol_ds6064.lock"))
+    lock = InstrumentLock(lock_path)
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while True:
+        try:
+            lock.acquire()
+            break
+        except OSError:
+            if timeout_ms == 0 or time.monotonic() >= deadline:
+                fail(
+                    f"Instrument is busy; could not acquire lock {lock_path} within {timeout_ms} ms",
+                    code=75,
+                )
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
 def run_with_watchdog(argv: list[str]) -> None:
     if not argv or argv[0] in {"-h", "--help"}:
         main(argv)
         return
+
+    if command_uses_instrument(argv):
+        with acquire_instrument_lock():
+            run_worker_with_watchdog(argv)
+        return
+
+    run_worker_with_watchdog(argv)
+
+
+def run_worker_with_watchdog(argv: list[str]) -> None:
 
     command = [sys.executable, __file__, "--worker", *argv]
     timeout_s = parse_cli_timeout_ms() / 1000.0

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ sys.path.insert(0, str(SRC))
 
 from rigol_ds6064 import parse_ascii_waveform, parse_waveform_payload, scale_waveform_values, validate_channel
 from safety import assert_safe_scpi
+from scope_cli import InstrumentLock, command_uses_instrument, parse_lock_timeout_ms
 from waveform_analysis import analyze_pwm, basic_waveform_stats, load_waveform_csv, save_json_manifest, save_multi_waveform_csv, save_waveform_csv
 
 
@@ -53,6 +55,44 @@ class OfflineParserTests(unittest.TestCase):
             assert_safe_scpi("*RST")
         with self.assertRaises(PermissionError):
             assert_safe_scpi(":DISK:DELete")
+
+    def test_command_uses_instrument_only_for_hardware_commands(self):
+        self.assertTrue(command_uses_instrument(["freq", "--channel", "CHANnel1"]))
+        self.assertTrue(command_uses_instrument(["capture-multi", "--channels", "CHANnel1", "CHANnel2"]))
+        self.assertFalse(command_uses_instrument(["latest"]))
+        self.assertFalse(command_uses_instrument(["analyze-pwm-file", "--csv", "wave.csv"]))
+        self.assertFalse(command_uses_instrument(["--help"]))
+
+    def test_parse_lock_timeout_ms_defaults_and_handles_invalid_values(self):
+        old_value = os.environ.pop("RIGOL_LOCK_TIMEOUT_MS", None)
+        try:
+            self.assertEqual(parse_lock_timeout_ms(), 5000)
+            os.environ["RIGOL_LOCK_TIMEOUT_MS"] = "250"
+            self.assertEqual(parse_lock_timeout_ms(), 250)
+            os.environ["RIGOL_LOCK_TIMEOUT_MS"] = "bad"
+            self.assertEqual(parse_lock_timeout_ms(), 5000)
+            os.environ["RIGOL_LOCK_TIMEOUT_MS"] = "-1"
+            self.assertEqual(parse_lock_timeout_ms(), 0)
+        finally:
+            if old_value is None:
+                os.environ.pop("RIGOL_LOCK_TIMEOUT_MS", None)
+            else:
+                os.environ["RIGOL_LOCK_TIMEOUT_MS"] = old_value
+
+    def test_instrument_lock_blocks_second_owner_until_released(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lock_path = Path(tmp) / "scope.lock"
+            first = InstrumentLock(lock_path)
+            second = InstrumentLock(lock_path)
+            first.acquire()
+            try:
+                with self.assertRaises(OSError):
+                    second.acquire()
+            finally:
+                first.release()
+
+            second.acquire()
+            second.release()
 
     def test_basic_waveform_stats(self):
         stats = basic_waveform_stats([0.0, 1.0, 3.0])

@@ -47,7 +47,7 @@ Agents should parse `ok` first. Do not rely on stderr for machine decisions.
 ## Recommended Agent Flow
 
 1. Run `health`.
-2. If `status` is `pass` or acceptable `degraded`, run `capture` or `capture-multi`.
+2. If `status` is `pass` or acceptable `degraded`, run `snapshot` for the normal AI handoff path, or `capture` / `capture-multi` when only waveform files are needed.
 3. Use returned `manifest_path` first, then CSV/PNG paths for downstream analysis.
 4. If a channel returns zero points, run `diagnose-channel` for that channel.
 5. If `list` sees the instrument but `idn` times out, run `probe-open --query-idn` to locate the stuck VISA stage.
@@ -65,6 +65,8 @@ For direct scalar questions, use the oscilloscope's built-in measurement engine 
 
 The `freq`, `period`, `duty`, and `vpp` commands call the DS6000 measurement queries documented in the programming guide, for example `:MEASure:FREQuency? CHANnel1`, and return the DS6064's own measurement result. Treat those values as authoritative for frequency, period, duty, and peak-to-peak voltage. The scope may return positive duty cycle as a ratio such as `5.080000e-01`; the CLI normalizes `duty` to percent.
 
+Some DS6000 measurement queries return a very large sentinel such as `9.9e37` when the requested scalar is unavailable. The CLI normalizes that case to `value: null`, preserves the original `raw_value`, and includes an `error` string so downstream agents do not treat the sentinel as a real measurement. Single scalar commands keep their historical output key and add `raw_<key>` plus `error` when this happens.
+
 Use `capture`, `summary`, or `analyze-pwm` when the user needs waveform evidence, timing relationships, CSV/PNG artifacts, or visual quality analysis. If a built-in measurement and a CSV-derived estimate disagree, report the built-in measurement as primary and label the waveform result as an estimate.
 
 If a built-in measurement query times out, do not retry in parallel. Report the timeout, then optionally fall back to `capture --points 1200` or `analyze-pwm --points 1200 --save`.
@@ -78,7 +80,7 @@ Stable manifest fields:
 ```json
 {
   "schema_version": "1.0",
-  "command": "capture|capture-multi|analyze-pwm",
+  "command": "capture|capture-multi|snapshot|analyze-pwm",
   "captured_at_local": "20260711_103125",
   "connection": "USB-TMC",
   "identity": "RIGOL TECHNOLOGIES,DS6064,...",
@@ -242,6 +244,39 @@ Stable fields:
   "channel_results": []
 }
 ```
+
+### snapshot
+
+```powershell
+.\.venv\Scripts\python.exe src\scope_cli.py snapshot --channels CHANnel1 CHANnel2 CHANnel3 --points 1200
+```
+
+Preferred one-step evidence package for AI handoff. It keeps one USB-TMC session open, reads `*IDN?`, collects the DS6064 built-in measurements for each requested channel, then captures a combined multi-channel CSV/PNG/manifest.
+
+Stable fields:
+
+```json
+{
+  "identity": "RIGOL TECHNOLOGIES,DS6064,DS6C134300118,...",
+  "channels": ["CHANnel1", "CHANnel2", "CHANnel3"],
+  "points_requested": 1200,
+  "sample_interval_s": 2e-7,
+  "measurements": {
+    "CHANnel1": {
+      "vpp_v": {"value": 3.3, "error": null},
+      "frequency_hz": {"value": 20000.0, "error": null},
+      "period_s": {"value": 5e-5, "error": null},
+      "positive_duty_percent": {"value": 50.0, "error": null}
+    }
+  },
+  "csv_path": "outputs/csv/..._snapshot.csv",
+  "image_path": "outputs/images/..._snapshot.png",
+  "manifest_path": "outputs/manifests/..._snapshot.json",
+  "channel_results": []
+}
+```
+
+Use `snapshot` when another AI agent needs both numeric scope measurements and waveform evidence. Use `freq`, `period`, `duty`, or `vpp` for a single scalar answer. Use `capture-multi` when measurement queries are not needed.
 
 ### diagnose-channel
 

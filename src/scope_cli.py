@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -40,6 +41,7 @@ INSTRUMENT_COMMANDS = {
     "summary",
     "capture",
     "capture-multi",
+    "snapshot",
     "diagnose-channel",
     "analyze-pwm",
 }
@@ -265,6 +267,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_capture_multi.add_argument("--channels", nargs="+", default=["CHANnel1", "CHANnel2", "CHANnel3"])
     p_capture_multi.add_argument("--points", type=int, default=1200)
 
+    p_snapshot = sub.add_parser("snapshot", help="Collect IDN, built-in measurements, and multi-channel evidence in one USB-TMC session")
+    p_snapshot.add_argument("--channels", nargs="+", default=["CHANnel1", "CHANnel2", "CHANnel3"])
+    p_snapshot.add_argument("--points", type=int, default=1200)
+
     p_diag = sub.add_parser("diagnose-channel")
     p_diag.add_argument("--channel", default="CHANnel1")
     p_diag.add_argument("--points", type=int, default=1200)
@@ -480,11 +486,33 @@ def health_recommendations(status: str, checks: dict) -> list[str]:
     return recommendations
 
 
+def normalize_measurement_result(label: str, value: float) -> dict:
+    if not math.isfinite(value):
+        return {"value": None, "raw_value": value, "error": f"{label} measurement is not finite"}
+    if abs(value) >= 9.0e37:
+        return {
+            "value": None,
+            "raw_value": value,
+            "error": f"{label} measurement is invalid or unavailable on the instrument",
+        }
+    return {"value": value, "error": None}
+
+
 def read_measurement(label: str, reader) -> dict:
     try:
-        return {"value": reader(), "error": None}
+        return normalize_measurement_result(label, float(reader()))
     except Exception as exc:
         return {"value": None, "error": str(exc)}
+
+
+def scalar_measurement_payload(channel: str, output_key: str, label: str, reader) -> dict:
+    measurement = normalize_measurement_result(label, float(reader()))
+    payload = {"channel": channel, output_key: measurement.get("value"), "measurement_source": "scope_builtin"}
+    if measurement.get("raw_value") is not None:
+        payload[f"raw_{output_key}"] = measurement["raw_value"]
+    if measurement.get("error") is not None:
+        payload["error"] = measurement["error"]
+    return payload
 
 
 def latest_manifest_path() -> Path:
@@ -634,13 +662,13 @@ def main(argv: list[str] | None = None) -> None:
             ok(data)
             return
 
-        if args.cmd == "capture-multi":
+        if args.cmd in {"capture-multi", "snapshot"}:
             args.channels = [validate_channel(channel) for channel in args.channels]
         elif args.cmd == "diagnose-channel":
             args.channel = validate_channel(args.channel)
         elif args.cmd in MEASUREMENT_COMMANDS:
             args.channel = validate_channel(args.channel)
-        if args.cmd in {"capture", "capture-multi", "diagnose-channel", "summary", "analyze-pwm"} and (args.points <= 0 or args.points > 120000):
+        if args.cmd in {"capture", "capture-multi", "snapshot", "diagnose-channel", "summary", "analyze-pwm"} and (args.points <= 0 or args.points > 120000):
             raise ValueError("points must be between 1 and 120000")
 
         scope = RigolDS6064().connect()
@@ -661,13 +689,13 @@ def main(argv: list[str] | None = None) -> None:
                 scope.autoscale()
                 ok({"state": "autoscale_requested"})
             elif args.cmd == "vpp":
-                ok({"channel": args.channel, "vpp_v": scope.measure_vpp(args.channel)})
+                ok(scalar_measurement_payload(args.channel, "vpp_v", "vpp", lambda: scope.measure_vpp(args.channel)))
             elif args.cmd == "freq":
-                ok({"channel": args.channel, "frequency_hz": scope.measure_freq(args.channel)})
+                ok(scalar_measurement_payload(args.channel, "frequency_hz", "frequency", lambda: scope.measure_freq(args.channel)))
             elif args.cmd == "period":
-                ok({"channel": args.channel, "period_s": scope.measure_period(args.channel)})
+                ok(scalar_measurement_payload(args.channel, "period_s", "period", lambda: scope.measure_period(args.channel)))
             elif args.cmd == "duty":
-                ok({"channel": args.channel, "positive_duty_percent": scope.measure_duty(args.channel)})
+                ok(scalar_measurement_payload(args.channel, "positive_duty_percent", "duty", lambda: scope.measure_duty(args.channel)))
             elif args.cmd == "summary":
                 capture = scope.capture_waveform_data(channel=args.channel, points=args.points)
                 values = capture["values"]
@@ -792,6 +820,80 @@ def main(argv: list[str] | None = None) -> None:
                         "channels": args.channels,
                         "points_requested": args.points,
                         "sample_interval_s": common_sample_interval_s,
+                        "csv_path": str(csv_path),
+                        "image_path": str(image_path),
+                        "manifest_path": str(manifest_path),
+                        "channel_results": channel_results,
+                    }
+                )
+            elif args.cmd == "snapshot":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                channel_suffix = "_".join(channel.replace("CHANnel", "CH") for channel in args.channels)
+                csv_path = Path("outputs/csv") / f"{timestamp}_{channel_suffix}_snapshot.csv"
+                image_path = Path("outputs/images") / f"{timestamp}_{channel_suffix}_snapshot.png"
+                manifest_path = Path("outputs/manifests") / f"{timestamp}_{channel_suffix}_snapshot.json"
+                identity = scope_identity_or_none(scope)
+                measurements: dict[str, dict] = {}
+                waveforms: dict[str, list[float]] = {}
+                channel_results: list[dict] = []
+                sample_intervals: list[float] = []
+                preambles: dict[str, dict] = {}
+
+                for channel in args.channels:
+                    measurements[channel] = {
+                        "vpp_v": read_measurement("vpp", lambda channel=channel: scope.measure_vpp(channel)),
+                        "frequency_hz": read_measurement("frequency", lambda channel=channel: scope.measure_freq(channel)),
+                        "period_s": read_measurement("period", lambda channel=channel: scope.measure_period(channel)),
+                        "positive_duty_percent": read_measurement("duty", lambda channel=channel: scope.measure_duty(channel)),
+                    }
+
+                    capture = scope.capture_waveform_data(channel=channel, points=args.points)
+                    values = capture["values"]
+                    waveforms[channel.replace("CHANnel", "CH")] = values
+                    preambles[channel] = capture.get("preamble") or {}
+                    sample_interval_s = capture.get("sample_interval_s")
+                    if sample_interval_s and sample_interval_s > 0:
+                        sample_intervals.append(sample_interval_s)
+                    channel_results.append(
+                        {
+                            "channel": channel,
+                            "points_captured": len(values),
+                            "sample_interval_s": sample_interval_s,
+                            "stats": basic_waveform_stats(values),
+                        }
+                    )
+
+                common_sample_interval_s = sample_intervals[0] if sample_intervals else None
+                if sample_intervals and any(abs(value - common_sample_interval_s) > common_sample_interval_s * 1e-6 for value in sample_intervals):
+                    common_sample_interval_s = None
+
+                save_multi_waveform_csv(waveforms, csv_path, sample_interval_s=common_sample_interval_s)
+                plot_multi_waveform(waveforms, image_path, sample_interval_s=common_sample_interval_s)
+                manifest = capture_manifest_base(
+                    command="snapshot",
+                    timestamp=timestamp,
+                    identity=identity,
+                    points_requested=args.points,
+                    sample_interval_s=common_sample_interval_s,
+                    csv_path=csv_path,
+                    image_path=image_path,
+                )
+                manifest.update(
+                    {
+                        "channels": args.channels,
+                        "measurements": measurements,
+                        "channel_results": channel_results,
+                        "preambles": preambles,
+                    }
+                )
+                write_capture_manifest(manifest, manifest_path)
+                ok(
+                    {
+                        "identity": identity,
+                        "channels": args.channels,
+                        "points_requested": args.points,
+                        "sample_interval_s": common_sample_interval_s,
+                        "measurements": measurements,
                         "csv_path": str(csv_path),
                         "image_path": str(image_path),
                         "manifest_path": str(manifest_path),

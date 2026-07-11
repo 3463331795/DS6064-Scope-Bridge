@@ -14,7 +14,7 @@ sys.path.insert(0, str(SRC))
 
 from rigol_ds6064 import create_resource_manager, normalize_duty_percent, normalize_optional_env, parse_ascii_waveform, parse_waveform_payload, resolve_visa_access_mode, scale_waveform_values, validate_channel
 from safety import assert_safe_scpi
-from scope_cli import InstrumentLock, command_uses_instrument, parse_lock_timeout_ms
+from scope_cli import InstrumentLock, command_uses_instrument, normalize_measurement_result, parse_lock_timeout_ms
 from waveform_analysis import analyze_pwm, basic_waveform_stats, load_waveform_csv, save_json_manifest, save_multi_waveform_csv, save_waveform_csv
 
 
@@ -59,6 +59,7 @@ class OfflineParserTests(unittest.TestCase):
     def test_command_uses_instrument_only_for_hardware_commands(self):
         self.assertTrue(command_uses_instrument(["freq", "--channel", "CHANnel1"]))
         self.assertTrue(command_uses_instrument(["capture-multi", "--channels", "CHANnel1", "CHANnel2"]))
+        self.assertTrue(command_uses_instrument(["snapshot", "--channels", "CHANnel1", "CHANnel2", "CHANnel3"]))
         self.assertTrue(command_uses_instrument(["probe-open", "--query-idn"]))
         self.assertFalse(command_uses_instrument(["latest"]))
         self.assertFalse(command_uses_instrument(["analyze-pwm-file", "--csv", "wave.csv"]))
@@ -83,6 +84,13 @@ class OfflineParserTests(unittest.TestCase):
     def test_normalize_duty_percent_accepts_ratio_or_percent(self):
         self.assertAlmostEqual(normalize_duty_percent(0.508), 50.8)
         self.assertAlmostEqual(normalize_duty_percent(50.8), 50.8)
+
+    def test_normalize_measurement_result_marks_rigol_invalid_sentinel(self):
+        self.assertEqual(normalize_measurement_result("frequency", 20000.0), {"value": 20000.0, "error": None})
+        invalid = normalize_measurement_result("duty", 9.9e37)
+        self.assertIsNone(invalid["value"])
+        self.assertEqual(invalid["raw_value"], 9.9e37)
+        self.assertIn("invalid", invalid["error"])
 
     def test_create_resource_manager_omits_none_library(self):
         class FakePyvisa:

@@ -65,6 +65,7 @@ Capture waveform evidence:
 ```powershell
 .\.venv\Scripts\python.exe src\scope_cli.py capture --channel CHANnel1 --points 1200
 .\.venv\Scripts\python.exe src\scope_cli.py capture-multi --channels CHANnel1 CHANnel2 CHANnel3 --points 1200
+.\.venv\Scripts\python.exe src\scope_cli.py snapshot --channels CHANnel1 CHANnel2 CHANnel3 --points 1200
 .\.venv\Scripts\python.exe src\scope_cli.py latest
 ```
 
@@ -91,7 +92,9 @@ Default to `CHANnel1` if the user does not name a channel. Accept only `CHANnel1
 
 For frequency, period, duty, and Vpp, report built-in scope measurements as primary. Use CSV-derived estimates only as secondary evidence or fallback, and label them as estimates when they disagree.
 
-For multi-channel timing analysis, prefer `capture-multi`. It saves one combined CSV, one overlay PNG, and one manifest under `outputs/manifests/`. Treat `manifest_path` as the primary handoff artifact for other AI agents.
+If a measurement field contains `value: null` with `raw_value` near `9.9e37`, report that scalar as unavailable from the instrument instead of treating the raw sentinel as a real number.
+
+For multi-channel timing analysis, prefer `snapshot` when another AI agent needs both DS6064 built-in measurements and waveform evidence. It uses one USB-TMC session to read identity, per-channel Vpp/frequency/period/duty, one combined CSV, one overlay PNG, and one manifest under `outputs/manifests/`. Use `capture-multi` when only waveform files are needed. Treat `manifest_path` as the primary handoff artifact for other AI agents.
 
 For PWM, report frequency, period, duty cycle, Vpp, approximate high/low level, and visible concerns such as overshoot, ringing, jitter, slow edges, or missing pulses.
 

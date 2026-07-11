@@ -29,7 +29,7 @@ All oscilloscope artifacts must stay under the skill project root in the single 
 
 ```env
 RIGOL_CONNECTION=USB
-RIGOL_SCOPE_RESOURCE=USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
+RIGOL_SCOPE_RESOURCE=USB0::0x1AB1::0x04B0::<YOUR_SERIAL>::INSTR
 RIGOL_SCOPE_TIMEOUT_MS=20000
 RIGOL_DEFAULT_CHANNEL=CHANnel1
 RIGOL_CLEAR_ON_CONNECT=0
@@ -138,7 +138,7 @@ USB-TMC is not a serial console. Avoid stuck sessions by following these rules:
 Known-good hardware validation after updating NI-VISA:
 
 ```text
-Identity: RIGOL TECHNOLOGIES,DS6064,DS6C134300118,00.01.03.SP01
+Identity: RIGOL TECHNOLOGIES,DS6064,<serial>,00.01.03.SP01
 CH1 frequency: 20000.0 Hz
 CH2 frequency: 20000.0 Hz
 CH3 frequency: 20000.0 Hz
@@ -154,7 +154,7 @@ Respond in concise Chinese engineering language. Include connection state, devic
 
 ```text
 连接状态：成功
-设备信息：RIGOL TECHNOLOGIES,DS6064,DS6C134300118,00.01.03.SP01
+设备信息：RIGOL TECHNOLOGIES,DS6064,<serial>,00.01.03.SP01
 通道：CH1 / CH2 / CH3
 频率：20.00 kHz / 20.00 kHz / 20.00 kHz
 波形文件：outputs/images/...

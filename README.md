@@ -1,5 +1,7 @@
 # DS6064 Scope Bridge
 
+Safe JSON CLI and Codex skill for controlling RIGOL DS6064 / DS6000 oscilloscopes over USB-TMC with Python, PyVISA, and NI-VISA.
+
 这个工程把本地 RIGOL DS6064 示波器封装成一条可被 Codex/AI 安全调用的测量链路：
 
 ```text
@@ -21,7 +23,7 @@
 已在真机上验证通过：
 
 ```text
-Device: RIGOL TECHNOLOGIES,DS6064,DS6C134300118,00.01.03.SP01
+Device: RIGOL TECHNOLOGIES,DS6064,<serial>,00.01.03.SP01
 CH1 frequency: 20000.0 Hz
 CH2 frequency: 20000.0 Hz
 CH3 frequency: 20000.0 Hz
@@ -87,7 +89,7 @@ outputs/manifests/20260711_160032_CH1_CH2_CH3_multi.json
 
 ```env
 RIGOL_CONNECTION=USB
-RIGOL_SCOPE_RESOURCE=USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
+RIGOL_SCOPE_RESOURCE=USB0::0x1AB1::0x04B0::<YOUR_SERIAL>::INSTR
 RIGOL_SCOPE_TIMEOUT_MS=20000
 RIGOL_DEFAULT_CHANNEL=CHANnel1
 RIGOL_CLEAR_ON_CONNECT=0
@@ -241,3 +243,13 @@ USB-TMC 是测试测量仪器协议，不是普通串口。常见卡住原因和
 - [.agents/skills/rigol-ds6064-scope/SKILL.md](.agents/skills/rigol-ds6064-scope/SKILL.md) 是 Codex skill 目录版本。
 - [docs/CLI_CONTRACT.md](docs/CLI_CONTRACT.md) 是更详细的 JSON CLI 合同。
 - `DS6000_Datasheet_EN.pdf` 和 `DS6000_ProgrammingGuide_EN.chm` 是原厂资料，默认忽略，不纳入 Git 源码交付。
+
+## 开源说明
+
+建议 GitHub 仓库描述：
+
+```text
+Safe JSON CLI and Codex skill for RIGOL DS6064/DS6000 USB-TMC oscilloscope control and waveform capture.
+```
+
+本项目使用 MIT License。贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，硬件安全边界见 [SECURITY.md](SECURITY.md)，版本记录见 [CHANGELOG.md](CHANGELOG.md)。

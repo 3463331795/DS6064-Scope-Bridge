@@ -13,7 +13,7 @@ Run commands from the project root:
 Default connection:
 
 ```text
-USB0::0x1AB1::0x04B0::DS6C134300118::INSTR
+USB0::0x1AB1::0x04B0::<YOUR_SERIAL>::INSTR
 ```
 
 The instrument timeout defaults to `RIGOL_SCOPE_TIMEOUT_MS=20000`. The CLI watchdog defaults to `RIGOL_CLI_TIMEOUT_MS=30000`. The cross-process instrument lock defaults to `RIGOL_LOCK_TIMEOUT_MS=5000`. VISA resource opening defaults to `RIGOL_VISA_ACCESS_MODE=no_lock` and `RIGOL_VISA_LIBRARY=auto`.
@@ -150,7 +150,7 @@ Stable fields:
 Returns:
 
 ```json
-{"identity": "RIGOL TECHNOLOGIES,DS6064,DS6C134300118,..."}
+{"identity": "RIGOL TECHNOLOGIES,DS6064,<serial>,..."}
 ```
 
 ### probe-open
@@ -177,7 +177,7 @@ Stable fields:
   "connection": "USB-TMC",
   "identity": "RIGOL TECHNOLOGIES,DS6064,...",
   "config": {
-    "resource": "USB0::0x1AB1::0x04B0::DS6C134300118::INSTR",
+    "resource": "USB0::0x1AB1::0x04B0::<YOUR_SERIAL>::INSTR",
     "timeout_ms": 20000,
     "access_mode": "no_lock",
     "visa_library": null,
@@ -257,7 +257,7 @@ Stable fields:
 
 ```json
 {
-  "identity": "RIGOL TECHNOLOGIES,DS6064,DS6C134300118,...",
+  "identity": "RIGOL TECHNOLOGIES,DS6064,<serial>,...",
   "channels": ["CHANnel1", "CHANnel2", "CHANnel3"],
   "points_requested": 1200,
   "sample_interval_s": 2e-7,

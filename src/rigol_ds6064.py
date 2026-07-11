@@ -20,6 +20,7 @@ load_dotenv()
 
 
 VALID_CHANNELS = ["CHANnel1", "CHANnel2", "CHANnel3", "CHANnel4"]
+DEFAULT_SCOPE_RESOURCE = "USB0::0x1AB1::0x04B0::<YOUR_SERIAL>::INSTR"
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class ScopeConfig:
     def from_env(cls) -> "ScopeConfig":
         resource = os.getenv(
             "RIGOL_SCOPE_RESOURCE",
-            "USB0::0x1AB1::0x04B0::DS6C134300118::INSTR",
+            DEFAULT_SCOPE_RESOURCE,
         )
         timeout_ms = int(os.getenv("RIGOL_SCOPE_TIMEOUT_MS", "20000"))
         clear_on_connect = os.getenv("RIGOL_CLEAR_ON_CONNECT", "0").lower() in {"1", "true", "yes", "on"}
